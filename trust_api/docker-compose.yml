@@ -1,0 +1,20 @@
+services:
+  trust-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pqc-trust-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TEST_NETWORK_DIR: /fabric-samples/test-network
+      CHANNEL_NAME: mychannel
+      CC_NAME: pqc_mwc
+      ORG: "1"
+      PQC_KEY_DIR: /service/pqc_api_keys
+      PQC_SIG_ALG: Dilithium5
+    volumes:
+      - ${HOME}/fabric-samples:/fabric-samples
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./pqc_api_keys:/service/pqc_api_keys

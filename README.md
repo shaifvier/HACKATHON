@@ -91,3 +91,80 @@ docker rmi pqc-mwc-ccaas:latest 2>/dev/null || true
 ```bash
 CHANNEL_NAME=mychannel CC_NAME=pqc_mwc CC_PORT=9999 ./src/scripts/deploy_testnetwork_ccaas_mwc.sh
 ```
+
+## FastAPI trust score app (with PQC signing)
+
+This repo now includes a FastAPI service that:
+
+- Signs trust score updates with Dilithium5 (PQC)
+- Invokes chaincode `SetReputation`
+- Queries chaincode `GetReputation`
+
+### Install dependencies
+
+```bash
+cd trust_api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Run API
+
+```bash
+cd trust_api
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Environment variables (optional):
+
+- `TEST_NETWORK_DIR` (default: `~/fabric-samples/test-network`)
+- `CHANNEL_NAME` (default: `mychannel`)
+- `CC_NAME` (default: `pqc_mwc`)
+- `ORG` (default: `1`)
+- `PQC_KEY_DIR` (default: `./pqc_api_keys`)
+- `PQC_SIG_ALG` (default: `Dilithium5`)
+
+### API endpoints
+
+Put/update a trust score (API signs data with PQC before invoke):
+
+```bash
+curl -X PUT "http://localhost:8000/trust-scores/controllerA" \
+	-H "Content-Type: application/json" \
+	-d '{"score": 87}'
+```
+
+Get trust score from blockchain:
+
+```bash
+curl "http://localhost:8000/trust-scores/controllerA"
+```
+
+## Run FastAPI as a container service
+
+The repo includes a containerized deployment for the API with dependencies installed in-image, including `liboqs` and Python packages.
+
+### Prerequisites
+
+- Fabric test-network is already up on the host (`$HOME/fabric-samples/test-network`)
+- Docker daemon is running on host
+
+### Build and run
+
+```bash
+docker compose -f trust_api/docker-compose.yml up -d --build
+```
+
+### Check service
+
+```bash
+docker compose -f trust_api/docker-compose.yml ps
+docker logs -f pqc-trust-api
+```
+
+### Stop service
+
+```bash
+docker compose -f trust_api/docker-compose.yml down
+```
