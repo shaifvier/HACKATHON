@@ -56,6 +56,14 @@ To force lifecycle upgrade (approve+commit with next sequence):
 FORCE_LIFECYCLE=true ./src/scripts/deploy_testnetwork_ccaas_mwc.sh
 ```
 
+To toggle verbose reputation/signature logs in chaincode container:
+
+```bash
+VERBOSE_LOGS=false ./src/scripts/deploy_testnetwork_ccaas_mwc.sh
+```
+
+Default is `VERBOSE_LOGS=true`.
+
 ## Verify
 
 Tail chaincode logs:

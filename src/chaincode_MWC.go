@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -40,22 +41,34 @@ func reputationMessageDigest(id string, reputation int) []byte {
 }
 
 func VerifyPQCSignature(message []byte, sigB64, pubKeyB64 string) bool {
+	verboseLogf(
+		"PQC_VERIFY_START alg=Dilithium5 msg_sha256=%s sig_b64_prefix=%s pub_b64_prefix=%s",
+		sha256Hex(message),
+		previewForLog(sigB64),
+		previewForLog(pubKeyB64),
+	)
+
 	sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
 	if err != nil {
 		fmt.Println("decode sig:", err)
+		verboseLogf("PQC_VERIFY_FAIL reason=decode_signature err=%v", err)
 		return false
 	}
 
 	pubBytes, err := base64.StdEncoding.DecodeString(pubKeyB64)
 	if err != nil {
 		fmt.Println("decode pub:", err)
+		verboseLogf("PQC_VERIFY_FAIL reason=decode_public_key err=%v", err)
 		return false
 	}
+
+	verboseLogf("PQC_VERIFY_INPUT sig_len=%d pub_len=%d", len(sigBytes), len(pubBytes))
 
 	var sig oqs.Signature
 	defer sig.Clean()
 	if err := sig.Init("Dilithium5", nil); err != nil {
 		fmt.Println("init oqs:", err)
+		verboseLogf("PQC_VERIFY_FAIL reason=init_oqs err=%v", err)
 		return false
 	}
 
@@ -64,8 +77,10 @@ func VerifyPQCSignature(message []byte, sigB64, pubKeyB64 string) bool {
 	fmt.Printf("Dilithium5 verify time: %s\n", time.Since(start))
 	if err != nil {
 		fmt.Println("verify error:", err)
+		verboseLogf("PQC_VERIFY_FAIL reason=verify_call err=%v", err)
 		return false
 	}
+	verboseLogf("PQC_VERIFY_RESULT valid=%t elapsed=%s", isValid, time.Since(start))
 	return isValid
 }
 
@@ -76,6 +91,8 @@ func (s *SmartContract) SetReputation(
 	signature string,
 	signingPublicKey string,
 ) error {
+	verboseLogf("SET_REPUTATION_REQUEST id=%s reputation=%d", id, reputation)
+
 	if id == "" {
 		return fmt.Errorf("id is required")
 	}
@@ -84,7 +101,9 @@ func (s *SmartContract) SetReputation(
 	}
 
 	digest := reputationMessageDigest(id, reputation)
+	verboseLogf("SET_REPUTATION_DIGEST id=%s digest_sha256=%s", id, sha256Hex(digest))
 	if !VerifyPQCSignature(digest, signature, signingPublicKey) {
+		verboseLogf("SET_REPUTATION_REJECTED id=%s reason=invalid_pqc_signature", id)
 		return fmt.Errorf("invalid PQC signature for reputation update")
 	}
 
@@ -109,6 +128,14 @@ func (s *SmartContract) SetReputation(
 	if err := ctx.GetStub().PutState(reputationKey(id), b); err != nil {
 		return fmt.Errorf("failed to store reputation: %w", err)
 	}
+
+	verboseLogf(
+		"SET_REPUTATION_STORED id=%s reputation=%d updated_at=%s tx_id=%s",
+		id,
+		reputation,
+		record.UpdatedAt,
+		ctx.GetStub().GetTxID(),
+	)
 
 	payload, _ := json.Marshal(record)
 	return ctx.GetStub().SetEvent("ReputationUpdated", payload)
@@ -150,6 +177,8 @@ func (s *SmartContract) VerifyReputationSignature(
 	ctx contractapi.TransactionContextInterface,
 	id string,
 ) (bool, error) {
+	verboseLogf("VERIFY_REPUTATION_SIGNATURE_REQUEST id=%s", id)
+
 	record, err := s.GetReputation(ctx, id)
 	if err != nil {
 		return false, err
@@ -157,10 +186,40 @@ func (s *SmartContract) VerifyReputationSignature(
 
 	digest := reputationMessageDigest(record.ID, record.Reputation)
 	ok := VerifyPQCSignature(digest, record.Signature, record.SigningPublicKey)
+	verboseLogf("VERIFY_REPUTATION_SIGNATURE_RESULT id=%s valid=%t", id, ok)
 	return ok, nil
 }
 
+func sha256Hex(data []byte) string {
+	d := sha256.Sum256(data)
+	return hex.EncodeToString(d[:])
+}
+
+func previewForLog(value string) string {
+	if len(value) <= 16 {
+		return value
+	}
+	return value[:16] + "..."
+}
+
+func verboseLogsEnabled() bool {
+	value := getEnvOrDefault("VERBOSE_LOGS", "true")
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return true
+	}
+	return parsed
+}
+
+func verboseLogf(format string, args ...any) {
+	if verboseLogsEnabled() {
+		log.Printf(format, args...)
+	}
+}
+
 func main() {
+	log.Printf("VERBOSE_LOGS=%t", verboseLogsEnabled())
+
 	config := struct {
 		CCID    string
 		Address string

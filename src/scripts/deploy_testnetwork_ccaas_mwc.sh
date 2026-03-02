@@ -21,6 +21,7 @@ CC_SEQUENCE="${CC_SEQUENCE:-}"
 CC_PORT="${CC_PORT:-9999}"
 CC_CONTAINER_NAME="${CC_CONTAINER_NAME:-pqc-mwc-ccaas}"
 FORCE_LIFECYCLE="${FORCE_LIFECYCLE:-false}"
+VERBOSE_LOGS="${VERBOSE_LOGS:-true}"
 
 export PATH="$FABRIC_SAMPLES_DIR/bin:$PATH"
 export FABRIC_CFG_PATH="$FABRIC_SAMPLES_DIR/config"
@@ -208,10 +209,12 @@ docker run -d --name "$CC_CONTAINER_NAME" \
   -e CHAINCODE_SERVER_ADDRESS="0.0.0.0:${CC_PORT}" \
   -e CHAINCODE_ID="$PACKAGE_ID" \
   -e CORE_CHAINCODE_ID_NAME="$PACKAGE_ID" \
+  -e VERBOSE_LOGS="$VERBOSE_LOGS" \
   -e CHAINCODE_TLS_DISABLED=true \
   "${CC_CONTAINER_NAME}:latest"
 
 info "Deployment completed"
+info "VERBOSE_LOGS=$VERBOSE_LOGS"
 info "Container logs: docker logs -f $CC_CONTAINER_NAME"
 info "Query example: ./network.sh cc query -org 1 -c $CHANNEL_NAME -ccn $CC_NAME -ccqc '{\"Args\":[\"GetReputation\",\"controllerA\"]}'"
 
