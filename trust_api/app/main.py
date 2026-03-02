@@ -1,10 +1,12 @@
 import os
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from app.fabric_client import FabricClient, FabricCommandError
 from app.pqc_signer import PQCSigner
+from app.qod_client import QoDClient, QoDClientError
 
 
 class PutTrustScoreRequest(BaseModel):
@@ -17,6 +19,12 @@ class PutTrustScoreResponse(BaseModel):
     signature: str
     signingPublicKey: str
     invokeOutput: str
+    qodSession: dict
+
+
+class GetTrustScoreResponse(BaseModel):
+    trustRecord: dict
+    qodSessionId: Optional[str] = None
 
 
 def build_app() -> FastAPI:
@@ -36,6 +44,8 @@ def build_app() -> FastAPI:
         org=org,
     )
     signer = PQCSigner(key_dir=key_dir, algorithm=pqc_algorithm)
+    qod = QoDClient()
+    latest_qod_session_by_record: dict[str, str] = {}
 
     @app.put("/trust-scores/{record_id}", response_model=PutTrustScoreResponse)
     def put_trust_score(record_id: str, payload: PutTrustScoreRequest) -> PutTrustScoreResponse:
@@ -50,24 +60,42 @@ def build_app() -> FastAPI:
         except FabricCommandError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+        try:
+            qod_session = qod.create_session_for_trust_score(payload.score)
+        except QoDClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        session_id = qod_session.get("platformResponse", {}).get("sessionId")
+        if isinstance(session_id, str) and session_id:
+            latest_qod_session_by_record[record_id] = session_id
+
         return PutTrustScoreResponse(
             id=record_id,
             score=payload.score,
             signature=signature_b64,
             signingPublicKey=signing_public_key_b64,
             invokeOutput=invoke_output,
+            qodSession=qod_session,
         )
 
     @app.get("/trust-scores/{record_id}")
-    def get_trust_score(record_id: str):
+    def get_trust_score(record_id: str) -> GetTrustScoreResponse:
         try:
-            result = fabric.query("GetReputation", [record_id])
+            trust_record = fabric.query("GetReputation", [record_id])
         except FabricCommandError as exc:
             detail = str(exc)
             if "not found" in detail.lower():
                 raise HTTPException(status_code=404, detail=detail) from exc
             raise HTTPException(status_code=500, detail=detail) from exc
-        return result
+
+        trust_record_view = dict(trust_record)
+        trust_record_view.pop("signature", None)
+        trust_record_view.pop("signingPublicKey", None)
+
+        return GetTrustScoreResponse(
+            trustRecord=trust_record_view,
+            qodSessionId=latest_qod_session_by_record.get(record_id),
+        )
 
     return app
 

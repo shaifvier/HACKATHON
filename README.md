@@ -132,6 +132,21 @@ Environment variables (optional):
 - `ORG` (default: `1`)
 - `PQC_KEY_DIR` (default: `./pqc_api_keys`)
 - `PQC_SIG_ALG` (default: `Dilithium5`)
+- `QOD_BASE_URL` (default: `https://network-as-code.p-eu.rapidapi.com`)
+- `QOD_PLATFORM` (default: `nokia_nac`)
+- `QOD_AUTH_MODE` (`rapidapi` or `bearer`, default: `rapidapi`)
+- `QOD_CREATE_SESSION_PATH` (default: `/qod/v0/sessions`)
+- `QOD_CREATE_SESSION_PATH_FALLBACKS` (default: `/quality-of-service-on-demand/v0.10.1/sessions,/quality-of-service-on-demand/v1/sessions`)
+- `QOD_API_KEY` (required when `QOD_AUTH_MODE=rapidapi`)
+- `QOD_API_HOST` (default: `network-as-code.nokia.rapidapi.com`)
+- `QOD_APP_ID` (optional)
+- `QOD_BEARER_TOKEN` (required when `QOD_AUTH_MODE=bearer`)
+- `QOD_PROFILE` (default: `DOWNLINK_M_UPLINK_L`)
+- `QOD_DEVICE_PHONE_NUMBER` (default: `+99999991001`)
+- `QOD_DEVICE_PUBLIC_IP` (default: `233.252.0.2`)
+- `QOD_DEVICE_PRIVATE_IP` (default: `192.0.2.25`)
+- `QOD_DEVICE_PUBLIC_PORT` (default: `80`)
+- `QOD_APPLICATION_SERVER_IP` (default: `8.8.8.8`)
 
 ### API endpoints
 
@@ -143,10 +158,46 @@ curl -X PUT "http://localhost:8000/trust-scores/controllerA" \
 	-d '{"score": 87}'
 ```
 
+`PUT` also triggers Nokia QoD `createSession` and returns both:
+
+- `id`, `score`, `signature`, `signingPublicKey`, `invokeOutput`
+- `qodSession` result from platform
+
 Get trust score from blockchain:
 
 ```bash
 curl "http://localhost:8000/trust-scores/controllerA"
+```
+
+`GET` is read-only and returns `trustRecord` from blockchain only.
+
+Returned `trustRecord` fields are trimmed for readability:
+
+- `id`
+- `reputation`
+- `updatedAt`
+
+Credits/cost policy used by API:
+
+- `score = session duration in seconds`
+- `1 credit per 60 seconds` (rounded up)
+- Example: trust score `60` requests `duration=60` and reports `creditsUsed=1`
+- Example: trust score `130` requests `duration=130` and reports `creditsUsed=3`
+
+Nokia NaC compatibility notes:
+
+- Payload follows CAMARA QoD createSession schema.
+- Default auth/path are tuned for Nokia NaC via RapidAPI.
+- Optional bearer mode supports direct CAMARA-compatible endpoints.
+
+Tester-compatible env example:
+
+```bash
+export QOD_AUTH_MODE=rapidapi
+export QOD_BASE_URL="https://network-as-code.p-eu.rapidapi.com"
+export QOD_CREATE_SESSION_PATH="/qod/v0/sessions"
+export QOD_API_HOST="network-as-code.nokia.rapidapi.com"
+export QOD_API_KEY="<your-key>"
 ```
 
 ## Run FastAPI as a container service

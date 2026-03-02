@@ -19,6 +19,21 @@ services:
       ORG: "1"
       PQC_KEY_DIR: /service/pqc_api_keys
       PQC_SIG_ALG: Dilithium5
+      QOD_PLATFORM: ${QOD_PLATFORM:-nokia_nac}
+      QOD_AUTH_MODE: ${QOD_AUTH_MODE:-rapidapi}
+      QOD_BASE_URL: ${QOD_BASE_URL:-https://network-as-code.p-eu.rapidapi.com}
+      QOD_CREATE_SESSION_PATH: ${QOD_CREATE_SESSION_PATH:-/qod/v0/sessions}
+      QOD_CREATE_SESSION_PATH_FALLBACKS: ${QOD_CREATE_SESSION_PATH_FALLBACKS:-/quality-of-service-on-demand/v0.10.1/sessions,/quality-of-service-on-demand/v1/sessions}
+      QOD_API_KEY: ${QOD_API_KEY:-}
+      QOD_API_HOST: ${QOD_API_HOST:-network-as-code.nokia.rapidapi.com}
+      QOD_APP_ID: ${QOD_APP_ID:-}
+      QOD_BEARER_TOKEN: ${QOD_BEARER_TOKEN:-}
+      QOD_PROFILE: ${QOD_PROFILE:-DOWNLINK_M_UPLINK_L}
+      QOD_DEVICE_PHONE_NUMBER: ${QOD_DEVICE_PHONE_NUMBER:-+99999991001}
+      QOD_DEVICE_PUBLIC_IP: ${QOD_DEVICE_PUBLIC_IP:-233.252.0.2}
+      QOD_DEVICE_PRIVATE_IP: ${QOD_DEVICE_PRIVATE_IP:-192.0.2.25}
+      QOD_DEVICE_PUBLIC_PORT: ${QOD_DEVICE_PUBLIC_PORT:-80}
+      QOD_APPLICATION_SERVER_IP: ${QOD_APPLICATION_SERVER_IP:-8.8.8.8}
     volumes:
       - ${HOME}/fabric-samples:/fabric-samples
       - /var/run/docker.sock:/var/run/docker.sock
