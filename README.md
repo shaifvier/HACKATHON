@@ -145,6 +145,8 @@ curl "http://localhost:8000/trust-scores/controllerA"
 
 The repo includes a containerized deployment for the API with dependencies installed in-image, including `liboqs` and Python packages.
 
+The API container publishes `8000:8000` so the API is reachable at `http://localhost:8000` from the host.
+
 ### Prerequisites
 
 - Fabric test-network is already up on the host (`$HOME/fabric-samples/test-network`)

@@ -118,6 +118,25 @@ else
   EFFECTIVE_SEQUENCE="${CC_SEQUENCE:-$((CURRENT_SEQUENCE + 1))}"
 fi
 
+if [[ "$RUN_LIFECYCLE" == "false" ]]; then
+  setGlobalsOrg1
+  APPROVED_DEF=$(peer lifecycle chaincode queryapproved \
+    -C "$CHANNEL_NAME" \
+    -n "$CC_NAME" \
+    --sequence "$CURRENT_SEQUENCE" 2>/dev/null || true)
+
+  APPROVED_PACKAGE_ID=$(echo "$APPROVED_DEF" | sed -n 's/.*package-id: \([^,]*\),.*/\1/p' | head -n1 | xargs)
+
+  if [[ -z "$APPROVED_PACKAGE_ID" ]]; then
+    echo "Unable to determine approved package-id for ${CC_NAME} (sequence ${CURRENT_SEQUENCE})."
+    echo "Re-run with FORCE_LIFECYCLE=true to re-approve/commit and align the package ID."
+    exit 1
+  fi
+
+  PACKAGE_ID="$APPROVED_PACKAGE_ID"
+  info "Using approved PACKAGE_ID from committed definition: $PACKAGE_ID"
+fi
+
 if [[ "$RUN_LIFECYCLE" == "true" ]]; then
   setGlobalsOrg1
   info "Installing package on Org1"

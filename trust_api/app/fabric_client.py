@@ -22,6 +22,37 @@ class FabricClient:
         self.chaincode_name = chaincode_name
         self.org = org
 
+    def _fabric_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env["PATH"] = f"/fabric-samples/bin:{env.get('PATH', '')}"
+        env["FABRIC_CFG_PATH"] = "/fabric-samples/config"
+        env["CORE_PEER_TLS_ENABLED"] = "true"
+
+        if self.org == 2:
+            env["CORE_PEER_LOCALMSPID"] = "Org2MSP"
+            env["CORE_PEER_ADDRESS"] = "peer0.org2.example.com:9051"
+            env["CORE_PEER_TLS_ROOTCERT_FILE"] = (
+                "/fabric-samples/test-network/organizations/peerOrganizations/"
+                "org2.example.com/peers/peer0.org2.example.com/tls/ca.crt"
+            )
+            env["CORE_PEER_MSPCONFIGPATH"] = (
+                "/fabric-samples/test-network/organizations/peerOrganizations/"
+                "org2.example.com/users/Admin@org2.example.com/msp"
+            )
+        else:
+            env["CORE_PEER_LOCALMSPID"] = "Org1MSP"
+            env["CORE_PEER_ADDRESS"] = "peer0.org1.example.com:7051"
+            env["CORE_PEER_TLS_ROOTCERT_FILE"] = (
+                "/fabric-samples/test-network/organizations/peerOrganizations/"
+                "org1.example.com/peers/peer0.org1.example.com/tls/ca.crt"
+            )
+            env["CORE_PEER_MSPCONFIGPATH"] = (
+                "/fabric-samples/test-network/organizations/peerOrganizations/"
+                "org1.example.com/users/Admin@org1.example.com/msp"
+            )
+
+        return env
+
     def _run(self, args: list[str]) -> str:
         if not self.test_network_dir.exists():
             raise FabricCommandError(
@@ -33,7 +64,7 @@ class FabricClient:
             cwd=self.test_network_dir,
             text=True,
             capture_output=True,
-            env=os.environ.copy(),
+            env=self._fabric_env(),
             check=False,
         )
         output = (process.stdout or "") + (process.stderr or "")
@@ -42,35 +73,61 @@ class FabricClient:
         return output.strip()
 
     def invoke(self, function_name: str, function_args: list[str]) -> str:
-        cc_payload = json.dumps({"Args": [function_name, *function_args]})
+        cc_payload = json.dumps({"Args": [function_name, *function_args]}, separators=(",", ":"))
+
+        orderer_ca = (
+            "/fabric-samples/test-network/organizations/ordererOrganizations/example.com/"
+            "orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem"
+        )
+        peer0_org1_ca = (
+            "/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com/"
+            "peers/peer0.org1.example.com/tls/ca.crt"
+        )
+        peer0_org2_ca = (
+            "/fabric-samples/test-network/organizations/peerOrganizations/org2.example.com/"
+            "peers/peer0.org2.example.com/tls/ca.crt"
+        )
+
         cmd = [
-            "./network.sh",
-            "cc",
+            "peer",
+            "chaincode",
             "invoke",
-            "-org",
-            str(self.org),
-            "-c",
+            "-o",
+            "orderer.example.com:7050",
+            "--ordererTLSHostnameOverride",
+            "orderer.example.com",
+            "--tls",
+            "--cafile",
+            orderer_ca,
+            "-C",
             self.channel_name,
-            "-ccn",
+            "-n",
             self.chaincode_name,
-            "-ccic",
+            "-c",
             cc_payload,
+            "--peerAddresses",
+            "peer0.org1.example.com:7051",
+            "--tlsRootCertFiles",
+            peer0_org1_ca,
+            "--peerAddresses",
+            "peer0.org2.example.com:9051",
+            "--tlsRootCertFiles",
+            peer0_org2_ca,
+            "--waitForEvent",
         ]
         return self._run(cmd)
 
     def query(self, function_name: str, function_args: list[str]) -> Any:
-        cc_payload = json.dumps({"Args": [function_name, *function_args]})
+        cc_payload = json.dumps({"Args": [function_name, *function_args]}, separators=(",", ":"))
         cmd = [
-            "./network.sh",
-            "cc",
+            "peer",
+            "chaincode",
             "query",
-            "-org",
-            str(self.org),
-            "-c",
+            "-C",
             self.channel_name,
-            "-ccn",
+            "-n",
             self.chaincode_name,
-            "-ccqc",
+            "-c",
             cc_payload,
         ]
         raw = self._run(cmd)

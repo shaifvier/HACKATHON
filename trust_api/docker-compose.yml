@@ -7,6 +7,11 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "orderer.example.com:host-gateway"
+      - "peer0.org1.example.com:host-gateway"
+      - "peer0.org2.example.com:host-gateway"
     environment:
       TEST_NETWORK_DIR: /fabric-samples/test-network
       CHANNEL_NAME: mychannel

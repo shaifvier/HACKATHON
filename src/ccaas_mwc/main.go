@@ -88,12 +88,17 @@ func (s *SmartContract) SetReputation(
 		return fmt.Errorf("invalid PQC signature for reputation update")
 	}
 
+	updatedAt, err := txTimestampRFC3339Nano(ctx)
+	if err != nil {
+		return err
+	}
+
 	record := ReputationRecord{
 		ID:               id,
 		Reputation:       reputation,
 		Signature:        signature,
 		SigningPublicKey: signingPublicKey,
-		UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+		UpdatedAt:        updatedAt,
 	}
 
 	b, err := json.Marshal(record)
@@ -107,6 +112,14 @@ func (s *SmartContract) SetReputation(
 
 	payload, _ := json.Marshal(record)
 	return ctx.GetStub().SetEvent("ReputationUpdated", payload)
+}
+
+func txTimestampRFC3339Nano(ctx contractapi.TransactionContextInterface) (string, error) {
+	ts, err := ctx.GetStub().GetTxTimestamp()
+	if err != nil {
+		return "", fmt.Errorf("failed to read tx timestamp: %w", err)
+	}
+	return time.Unix(ts.Seconds, int64(ts.Nanos)).UTC().Format(time.RFC3339Nano), nil
 }
 
 func (s *SmartContract) GetReputation(
