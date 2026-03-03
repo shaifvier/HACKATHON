@@ -1,0 +1,4 @@
+output/hls/*
+output/dash/*
+!output/hls/.gitkeep
+!output/dash/.gitkeep

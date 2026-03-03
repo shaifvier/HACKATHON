@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QoD Video Test Player</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; max-width: 900px; }
+    video { width: 100%; max-width: 900px; background: #000; }
+    .row { margin: 12px 0; }
+    input, select, button { padding: 8px; }
+    #log { background: #f7f7f7; padding: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>QoD Video Test Player (HLS/DASH)</h1>
+  <div class="row">
+    <label for="mode">Mode:</label>
+    <select id="mode">
+      <option value="hls">HLS</option>
+      <option value="dash">DASH</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="url">Stream URL:</label>
+    <input id="url" size="80" value="/media/hls/stream.m3u8" />
+    <button id="load">Load</button>
+    <button id="startRun">Start Run</button>
+    <button id="endRun">End Run</button>
+    <button id="exportJson">Export JSON</button>
+    <button id="exportCsv">Export CSV</button>
+  </div>
+
+  <video id="video" controls playsinline></video>
+  <h3>Events</h3>
+  <div id="log"></div>
+  <h3>Current Run KPIs</h3>
+  <div id="kpis"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+  <script>
+    const modeEl = document.getElementById('mode');
+    const urlEl = document.getElementById('url');
+    const loadBtn = document.getElementById('load');
+    const video = document.getElementById('video');
+    const logEl = document.getElementById('log');
+    const startRunBtn = document.getElementById('startRun');
+    const endRunBtn = document.getElementById('endRun');
+    const exportJsonBtn = document.getElementById('exportJson');
+    const exportCsvBtn = document.getElementById('exportCsv');
+    const kpisEl = document.getElementById('kpis');
+
+    let hls = null;
+    let dash = null;
+    let run = null;
+    const runHistory = [];
+
+    function newRun() {
+      return {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        mode: modeEl.value,
+        streamUrl: urlEl.value.trim(),
+        startedAt: new Date().toISOString(),
+        startedPerfMs: performance.now(),
+        endedAt: null,
+        startupDelayMs: null,
+        rebufferCount: 0,
+        rebufferTotalMs: 0,
+        lastWaitStartMs: null,
+        firstPlayingCaptured: false,
+        playAttempts: 0,
+        playedSeconds: 0,
+        watchTimeSeconds: 0,
+      };
+    }
+
+    function updateKpis() {
+      if (!run) {
+        kpisEl.textContent = 'No active run. Click Start Run.';
+        return;
+      }
+
+      const bufferingRatio = run.watchTimeSeconds > 0
+        ? (run.rebufferTotalMs / 1000) / run.watchTimeSeconds
+        : 0;
+
+      const payload = {
+        id: run.id,
+        mode: run.mode,
+        streamUrl: run.streamUrl,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        startupDelayMs: run.startupDelayMs,
+        rebufferCount: run.rebufferCount,
+        rebufferTotalMs: run.rebufferTotalMs,
+        watchTimeSeconds: Number(run.watchTimeSeconds.toFixed(2)),
+        playedSeconds: Number(run.playedSeconds.toFixed(2)),
+        bufferingRatio: Number(bufferingRatio.toFixed(4)),
+      };
+
+      kpisEl.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function startRun() {
+      run = newRun();
+      log(`Run started: ${run.id}`);
+      updateKpis();
+    }
+
+    function endRun() {
+      if (!run) {
+        log('No active run to stop.');
+        return;
+      }
+
+      if (run.lastWaitStartMs !== null) {
+        run.rebufferTotalMs += (performance.now() - run.lastWaitStartMs);
+        run.lastWaitStartMs = null;
+      }
+
+      run.endedAt = new Date().toISOString();
+      runHistory.push({ ...run });
+      log(`Run ended: ${run.id}`);
+      run = null;
+      updateKpis();
+    }
+
+    function downloadFile(filename, mime, content) {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportJson() {
+      if (!runHistory.length) {
+        log('No completed runs to export.');
+        return;
+      }
+      downloadFile('qoe_runs.json', 'application/json', JSON.stringify(runHistory, null, 2));
+      log('Exported qoe_runs.json');
+    }
+
+    function exportCsv() {
+      if (!runHistory.length) {
+        log('No completed runs to export.');
+        return;
+      }
+
+      const headers = [
+        'id', 'mode', 'streamUrl', 'startedAt', 'endedAt', 'startupDelayMs',
+        'rebufferCount', 'rebufferTotalMs', 'watchTimeSeconds', 'playedSeconds', 'bufferingRatio'
+      ];
+
+      const rows = runHistory.map((item) => {
+        const bufferingRatio = item.watchTimeSeconds > 0
+          ? (item.rebufferTotalMs / 1000) / item.watchTimeSeconds
+          : 0;
+
+        return [
+          item.id,
+          item.mode,
+          item.streamUrl,
+          item.startedAt,
+          item.endedAt,
+          item.startupDelayMs,
+          item.rebufferCount,
+          Number(item.rebufferTotalMs.toFixed(2)),
+          Number(item.watchTimeSeconds.toFixed(2)),
+          Number(item.playedSeconds.toFixed(2)),
+          Number(bufferingRatio.toFixed(4)),
+        ];
+      });
+
+      const csv = [headers.join(','), ...rows.map((r) => r.map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`).join(','))].join('\n');
+      downloadFile('qoe_runs.csv', 'text/csv', csv);
+      log('Exported qoe_runs.csv');
+    }
+
+    function log(msg) {
+      const line = `[${new Date().toISOString()}] ${msg}`;
+      logEl.textContent = `${line}\n${logEl.textContent}`;
+    }
+
+    function unload() {
+      if (hls) { hls.destroy(); hls = null; }
+      if (dash) { dash.reset(); dash = null; }
+      video.removeAttribute('src');
+      video.load();
+    }
+
+    function loadStream() {
+      unload();
+      const mode = modeEl.value;
+      const url = urlEl.value.trim();
+      if (!url) return;
+
+      if (run) {
+        run.mode = mode;
+        run.streamUrl = url;
+        run.playAttempts += 1;
+      }
+
+      if (mode === 'hls') {
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+          video.play().catch(() => {});
+          log(`Native HLS loaded: ${url}`);
+        } else if (window.Hls && Hls.isSupported()) {
+          hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play().catch(() => {});
+            log(`hls.js loaded: ${url}`);
+          });
+          hls.on(Hls.Events.ERROR, (_, data) => log(`HLS error: ${JSON.stringify(data)}`));
+        } else {
+          log('HLS not supported in this browser.');
+        }
+      } else {
+        if (window.dashjs) {
+          dash = dashjs.MediaPlayer().create();
+          dash.initialize(video, url, true);
+          log(`dash.js loaded: ${url}`);
+          dash.on('error', (e) => log(`DASH error: ${JSON.stringify(e)}`));
+        } else {
+          log('dash.js not available.');
+        }
+      }
+    }
+
+    modeEl.addEventListener('change', () => {
+      urlEl.value = modeEl.value === 'hls' ? '/media/hls/stream.m3u8' : '/media/dash/stream.mpd';
+    });
+
+    video.addEventListener('waiting', () => log('Player waiting (possible rebuffer).'));
+    video.addEventListener('playing', () => log('Player playing.'));
+    video.addEventListener('error', () => log(`Video element error code: ${video.error?.code}`));
+    video.addEventListener('loadedmetadata', () => {
+      if (run) {
+        run.playedSeconds = video.duration || 0;
+        updateKpis();
+      }
+    });
+    video.addEventListener('timeupdate', () => {
+      if (run) {
+        run.watchTimeSeconds = Math.max(run.watchTimeSeconds, video.currentTime || 0);
+        updateKpis();
+      }
+    });
+    video.addEventListener('waiting', () => {
+      if (run && run.lastWaitStartMs === null) {
+        run.lastWaitStartMs = performance.now();
+        run.rebufferCount += 1;
+        updateKpis();
+      }
+    });
+    video.addEventListener('playing', () => {
+      if (!run) return;
+      const now = performance.now();
+
+      if (!run.firstPlayingCaptured) {
+        run.firstPlayingCaptured = true;
+        run.startupDelayMs = Math.round(now - run.startedPerfMs);
+      }
+
+      if (run.lastWaitStartMs !== null) {
+        run.rebufferTotalMs += (now - run.lastWaitStartMs);
+        run.lastWaitStartMs = null;
+      }
+
+      updateKpis();
+    });
+
+    loadBtn.addEventListener('click', loadStream);
+    startRunBtn.addEventListener('click', startRun);
+    endRunBtn.addEventListener('click', endRun);
+    exportJsonBtn.addEventListener('click', exportJson);
+    exportCsvBtn.addEventListener('click', exportCsv);
+
+    updateKpis();
+  </script>
+</body>
+</html>

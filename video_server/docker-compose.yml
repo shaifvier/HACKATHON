@@ -1,0 +1,17 @@
+services:
+  video-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qos-video-server
+    ports:
+      - "8080:8080"
+    environment:
+      INPUT_FILE: /data/input/source.mp4
+      HLS_NAME: stream
+      DASH_NAME: stream
+      SEGMENT_SECONDS: 4
+    volumes:
+      - ./data:/data
+      - ./output:/var/www/media
+    restart: unless-stopped
