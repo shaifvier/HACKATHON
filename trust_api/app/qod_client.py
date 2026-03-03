@@ -31,11 +31,11 @@ class QoDClient:
         self.bearer_token = os.getenv("QOD_BEARER_TOKEN", "")
 
         self.qos_profile = os.getenv("QOD_PROFILE", "DOWNLINK_M_UPLINK_L")
-        self.device_phone_number = os.getenv("QOD_DEVICE_PHONE_NUMBER", "+99999991001")
-        self.device_public_ip = os.getenv("QOD_DEVICE_PUBLIC_IP", "233.252.0.2")
-        self.device_private_ip = os.getenv("QOD_DEVICE_PRIVATE_IP", "192.0.2.25")
+        self.device_phone_number = os.getenv("QOD_DEVICE_PHONE_NUMBER", "").strip()
+        self.device_public_ip = os.getenv("QOD_DEVICE_PUBLIC_IP", "84.78.248.189").strip()
+        self.device_private_ip = os.getenv("QOD_DEVICE_PRIVATE_IP", "").strip()
         self.device_public_port = int(os.getenv("QOD_DEVICE_PUBLIC_PORT", "80"))
-        self.app_server_ipv4 = os.getenv("QOD_APPLICATION_SERVER_IP", "8.8.8.8")
+        self.app_server_ipv4 = os.getenv("QOD_APPLICATION_SERVER_IP", "3.127.127.197").strip()
 
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}{path}"
@@ -68,16 +68,29 @@ class QoDClient:
             raise QoDClientError("QOD_AUTH_MODE must be 'rapidapi' or 'bearer'")
 
     def _payload(self, duration_seconds: int) -> dict[str, Any]:
+        device: dict[str, Any] = {}
+
+        if self.device_phone_number:
+            device["phoneNumber"] = self.device_phone_number
+
+        if self.device_public_ip:
+            ipv4_address: dict[str, Any] = {
+                "publicAddress": self.device_public_ip,
+                "publicPort": self.device_public_port,
+            }
+            if self.device_private_ip:
+                ipv4_address["privateAddress"] = self.device_private_ip
+            device["ipv4Address"] = ipv4_address
+
+        if not device:
+            raise QoDClientError("QoD device identifier missing: set QOD_DEVICE_PHONE_NUMBER or QOD_DEVICE_PUBLIC_IP")
+
+        if not self.app_server_ipv4:
+            raise QoDClientError("QOD_APPLICATION_SERVER_IP is required")
+
         return {
             "qosProfile": self.qos_profile,
-            "device": {
-                "phoneNumber": self.device_phone_number,
-                "ipv4Address": {
-                    "publicAddress": self.device_public_ip,
-                    "privateAddress": self.device_private_ip,
-                    "publicPort": self.device_public_port,
-                },
-            },
+            "device": device,
             "applicationServer": {
                 "ipv4Address": self.app_server_ipv4,
             },
