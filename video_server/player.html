@@ -71,6 +71,14 @@
       bitrateEl.textContent = mbps >= 1 ? `${mbps.toFixed(2)} Mbps` : `${kbps.toFixed(0)} kbps`;
     }
 
+    function setHlsLevelBitrate(levelIndex) {
+      if (!hls) return;
+      const levels = hls.levels || [];
+      const level = levels[levelIndex];
+      const bitrate = level?.realBitrate || level?.bitrate;
+      if (bitrate) setBitrate(bitrate);
+    }
+
     function clearBitratePolling() {
       if (bitrateTimer) {
         clearInterval(bitrateTimer);
@@ -238,12 +246,7 @@
       }
 
       if (mode === 'hls') {
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = url;
-          video.play().catch(() => {});
-          log(`Native HLS loaded: ${url}`);
-          setBitrate(0);
-        } else if (window.Hls && Hls.isSupported()) {
+        if (window.Hls && Hls.isSupported()) {
           hls = new Hls({
             startLevel: 0,
             capLevelToPlayerSize: true,
@@ -253,15 +256,26 @@
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             video.play().catch(() => {});
             log(`hls.js loaded: ${url}`);
+            setHlsLevelBitrate(hls.startLevel >= 0 ? hls.startLevel : 0);
           });
           hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
             const durationSec = data?.frag?.duration;
-            const bytes = data?.stats?.total;
+            const bytes = data?.stats?.loaded || data?.stats?.total;
             if (durationSec && bytes) {
               setBitrate((bytes * 8) / durationSec);
+            } else {
+              setHlsLevelBitrate(hls.currentLevel >= 0 ? hls.currentLevel : hls.nextAutoLevel);
             }
           });
+          hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
+            setHlsLevelBitrate(data?.level);
+          });
           hls.on(Hls.Events.ERROR, (_, data) => log(`HLS error: ${JSON.stringify(data)}`));
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+          video.play().catch(() => {});
+          log(`Native HLS loaded: ${url}`);
+          setBitrate(0);
         } else {
           log('HLS not supported in this browser.');
           setBitrate(0);
@@ -278,7 +292,8 @@
               const quality = dash.getQualityFor('video');
               const list = dash.getBitrateInfoListFor('video') || [];
               const info = list[quality];
-              setBitrate(info?.bitrate || 0);
+              const throughputKbps = dash.getAverageThroughput && dash.getAverageThroughput('video');
+              setBitrate(info?.bitrate || (throughputKbps ? throughputKbps * 1000 : 0));
             } catch {
               setBitrate(0);
             }
