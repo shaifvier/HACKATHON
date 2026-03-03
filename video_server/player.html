@@ -39,8 +39,8 @@
   <h3>Current Run KPIs</h3>
   <div id="kpis"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+  <script src="/vendor/hls.min.js"></script>
+  <script src="/vendor/dash.all.min.js"></script>
   <script>
     const modeEl = document.getElementById('mode');
     const urlEl = document.getElementById('url');
@@ -76,6 +76,14 @@
         clearInterval(bitrateTimer);
         bitrateTimer = null;
       }
+    }
+
+    const isAndroid = /Android/i.test(navigator.userAgent || '');
+    const defaultHlsUrl = isAndroid ? '/media/hls/v720p/stream.m3u8' : '/media/hls/stream.m3u8';
+    const defaultDashUrl = '/media/dash/stream.mpd';
+
+    if (urlEl.value === '/media/hls/stream.m3u8') {
+      urlEl.value = defaultHlsUrl;
     }
 
     function newRun() {
@@ -236,7 +244,10 @@
           log(`Native HLS loaded: ${url}`);
           setBitrate(0);
         } else if (window.Hls && Hls.isSupported()) {
-          hls = new Hls();
+          hls = new Hls({
+            startLevel: 0,
+            capLevelToPlayerSize: true,
+          });
           hls.loadSource(url);
           hls.attachMedia(video);
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -281,7 +292,7 @@
     }
 
     modeEl.addEventListener('change', () => {
-      urlEl.value = modeEl.value === 'hls' ? '/media/hls/stream.m3u8' : '/media/dash/stream.mpd';
+      urlEl.value = modeEl.value === 'hls' ? defaultHlsUrl : defaultDashUrl;
     });
 
     video.addEventListener('waiting', () => log('Player waiting (possible rebuffer).'));

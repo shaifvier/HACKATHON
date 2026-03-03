@@ -76,3 +76,4 @@ In `docker-compose.yml`:
 - `HLS_NAME` (default: `stream`)
 - `DASH_NAME` (default: `stream`)
 - `SEGMENT_SECONDS` (default: `4`)
+- `REPACKAGE_ON_START` (default: `false`; set `true` to force regenerate streams on container start)
