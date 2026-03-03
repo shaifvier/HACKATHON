@@ -24,6 +24,16 @@ class QoDClient:
         self.create_session_fallback_paths = [
             value.strip() for value in fallback_raw.split(",") if value.strip()
         ]
+        self.delete_session_path_template = os.getenv(
+            "QOD_DELETE_SESSION_PATH_TEMPLATE", "/qod/v0/sessions/{sessionId}"
+        )
+        delete_fallback_raw = os.getenv(
+            "QOD_DELETE_SESSION_PATH_FALLBACKS",
+            "/quality-of-service-on-demand/v0.10.1/sessions/{sessionId},/quality-of-service-on-demand/v1/sessions/{sessionId}",
+        )
+        self.delete_session_fallback_path_templates = [
+            value.strip() for value in delete_fallback_raw.split(",") if value.strip()
+        ]
 
         self.api_key = os.getenv("QOD_API_KEY", "")
         self.api_host = os.getenv("QOD_API_HOST", "network-as-code.nokia.rapidapi.com")
@@ -152,4 +162,67 @@ class QoDClient:
 
         raise QoDClientError(
             f"QoD API endpoint not reachable for createSession. Tried: {tried}. Last error: {last_error}"
+        )
+
+    def delete_session(self, session_id: str) -> dict[str, Any]:
+        self._validate_auth()
+
+        if not session_id or not session_id.strip():
+            raise QoDClientError("session_id is required")
+
+        clean_session_id = session_id.strip()
+
+        path_templates = [
+            self.delete_session_path_template,
+            *self.delete_session_fallback_path_templates,
+        ]
+        paths_to_try = [template.replace("{sessionId}", clean_session_id) for template in path_templates]
+
+        tried: list[str] = []
+        last_error: str | None = None
+
+        for path in paths_to_try:
+            req = urllib.request.Request(
+                self._url(path),
+                headers=self._headers(),
+                method="DELETE",
+            )
+            tried.append(path)
+
+            try:
+                with urllib.request.urlopen(req, timeout=45) as response:
+                    raw = response.read().decode("utf-8")
+                    response_json = json.loads(raw) if raw else {}
+                    return {
+                        "sessionDeleted": True,
+                        "statusCode": response.getcode(),
+                        "platform": self.platform,
+                        "authMode": self.auth_mode,
+                        "endpointUsed": path,
+                        "sessionId": clean_session_id,
+                        "platformResponse": response_json,
+                    }
+            except urllib.error.HTTPError as err:
+                err_body = err.read().decode("utf-8", errors="ignore")
+
+                if err.code == 404:
+                    return {
+                        "sessionDeleted": False,
+                        "statusCode": 404,
+                        "platform": self.platform,
+                        "authMode": self.auth_mode,
+                        "endpointUsed": path,
+                        "sessionId": clean_session_id,
+                        "platformResponse": {"detail": err_body or "session not found"},
+                    }
+
+                last_error = f"HTTP {err.code} on {path}: {err_body}"
+                if err.code in {405}:
+                    continue
+                raise QoDClientError(f"QoD API {last_error}") from err
+            except urllib.error.URLError as err:
+                raise QoDClientError(f"QoD API connection error: {err}") from err
+
+        raise QoDClientError(
+            f"QoD API endpoint not reachable for deleteSession. Tried: {tried}. Last error: {last_error}"
         )

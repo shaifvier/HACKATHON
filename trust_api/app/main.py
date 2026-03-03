@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -25,6 +26,14 @@ class PutTrustScoreResponse(BaseModel):
 class GetTrustScoreResponse(BaseModel):
     trustRecord: dict
     qodSessionId: Optional[str] = None
+    qodSessionCreatedAt: Optional[str] = None
+
+
+class DeleteTrustSessionResponse(BaseModel):
+    recordId: str
+    deletedSessionId: str
+    removedFromUser: bool
+    qodDelete: dict
 
 
 def build_app() -> FastAPI:
@@ -46,6 +55,32 @@ def build_app() -> FastAPI:
     signer = PQCSigner(key_dir=key_dir, algorithm=pqc_algorithm)
     qod = QoDClient()
     latest_qod_session_by_record: dict[str, str] = {}
+    latest_qod_session_created_at_by_record: dict[str, str] = {}
+    latest_qod_session_status_by_record: dict[str, str] = {}
+
+    def resolve_session_created_at(qod_session: dict) -> str:
+        platform_response = qod_session.get("platformResponse", {})
+        for key in (
+            "createdAt",
+            "creationDate",
+            "createdDate",
+            "startedAt",
+            "startDate",
+            "created",
+        ):
+            value = platform_response.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+
+        return datetime.now(timezone.utc).isoformat()
+
+    def resolve_session_qos_status(qod_session: dict) -> Optional[str]:
+        platform_response = qod_session.get("platformResponse", {})
+        for key in ("qosStatus", "status", "sessionStatus"):
+            value = platform_response.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
 
     @app.put("/trust-scores/{record_id}", response_model=PutTrustScoreResponse)
     def put_trust_score(record_id: str, payload: PutTrustScoreRequest) -> PutTrustScoreResponse:
@@ -68,6 +103,12 @@ def build_app() -> FastAPI:
         session_id = qod_session.get("platformResponse", {}).get("sessionId")
         if isinstance(session_id, str) and session_id:
             latest_qod_session_by_record[record_id] = session_id
+            latest_qod_session_created_at_by_record[record_id] = resolve_session_created_at(qod_session)
+            session_status = resolve_session_qos_status(qod_session)
+            if session_status:
+                latest_qod_session_status_by_record[record_id] = session_status
+            else:
+                latest_qod_session_status_by_record.pop(record_id, None)
 
         return PutTrustScoreResponse(
             id=record_id,
@@ -92,9 +133,35 @@ def build_app() -> FastAPI:
         trust_record_view.pop("signature", None)
         trust_record_view.pop("signingPublicKey", None)
 
+        session_status = latest_qod_session_status_by_record.get(record_id, "")
+        include_session = session_status.upper() in {"AVAILABLE", "REQUESTED"}
+
         return GetTrustScoreResponse(
             trustRecord=trust_record_view,
-            qodSessionId=latest_qod_session_by_record.get(record_id),
+            qodSessionId=latest_qod_session_by_record.get(record_id) if include_session else None,
+            qodSessionCreatedAt=latest_qod_session_created_at_by_record.get(record_id) if include_session else None,
+        )
+
+    @app.delete("/trust-scores/{record_id}/session", response_model=DeleteTrustSessionResponse)
+    def delete_trust_session(record_id: str) -> DeleteTrustSessionResponse:
+        session_id = latest_qod_session_by_record.get(record_id)
+        if not session_id:
+            raise HTTPException(status_code=404, detail="No QoD session found for user")
+
+        try:
+            qod_delete = qod.delete_session(session_id)
+        except QoDClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        latest_qod_session_by_record.pop(record_id, None)
+        latest_qod_session_created_at_by_record.pop(record_id, None)
+        latest_qod_session_status_by_record.pop(record_id, None)
+
+        return DeleteTrustSessionResponse(
+            recordId=record_id,
+            deletedSessionId=session_id,
+            removedFromUser=True,
+            qodDelete=qod_delete,
         )
 
     return app

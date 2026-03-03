@@ -24,6 +24,8 @@ services:
       QOD_BASE_URL: ${QOD_BASE_URL:-https://network-as-code.p-eu.rapidapi.com}
       QOD_CREATE_SESSION_PATH: ${QOD_CREATE_SESSION_PATH:-/qod/v0/sessions}
       QOD_CREATE_SESSION_PATH_FALLBACKS: ${QOD_CREATE_SESSION_PATH_FALLBACKS:-/quality-of-service-on-demand/v0.10.1/sessions,/quality-of-service-on-demand/v1/sessions}
+      QOD_DELETE_SESSION_PATH_TEMPLATE: ${QOD_DELETE_SESSION_PATH_TEMPLATE:-/qod/v0/sessions/{sessionId}}
+      QOD_DELETE_SESSION_PATH_FALLBACKS: ${QOD_DELETE_SESSION_PATH_FALLBACKS:-/quality-of-service-on-demand/v0.10.1/sessions/{sessionId},/quality-of-service-on-demand/v1/sessions/{sessionId}}
       QOD_API_KEY: ${QOD_API_KEY:-}
       QOD_API_HOST: ${QOD_API_HOST:-network-as-code.nokia.rapidapi.com}
       QOD_APP_ID: ${QOD_APP_ID:-}
