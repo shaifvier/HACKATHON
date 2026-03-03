@@ -22,8 +22,7 @@ if [[ ! -f "$INPUT_FILE" ]]; then
     "$INPUT_FILE"
 fi
 
-rm -f "$HLS_DIR"/* "$DASH_DIR"/*
-rm -rf "$HLS_DIR"/v0 "$HLS_DIR"/v1 "$HLS_DIR"/v2 "$HLS_DIR"/v3
+rm -rf "$HLS_DIR"/* "$DASH_DIR"/*
 
 HAS_AUDIO="false"
 if ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of csv=p=0 "$INPUT_FILE" | grep -q "audio"; then
